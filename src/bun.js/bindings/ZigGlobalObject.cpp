@@ -165,6 +165,8 @@
 #include "JavaScriptCore/RemoteInspectorServer.h"
 #endif
 
+#include "NodeFSBinding.h"
+
 #if !OS(WINDOWS)
 #include <dlfcn.h>
 #endif
@@ -1178,7 +1180,7 @@ GlobalObject::GlobalObject(JSC::VM& vm, JSC::Structure* structure, const JSC::Gl
     : Base(vm, structure, methodTable)
     , m_bunVM(Bun__getVM())
     , m_constructors(makeUnique<WebCore::DOMConstructors>())
-    , m_world(WebCore::DOMWrapperWorld::create(vm, WebCore::DOMWrapperWorld::Type::Normal))
+    , m_world(static_cast<JSVMClientData*>(vm.clientData)->normalWorld())
     , m_worldIsNormal(true)
     , m_builtinInternalFunctions(vm)
     , m_scriptExecutionContext(new WebCore::ScriptExecutionContext(&vm, this))
@@ -1195,7 +1197,7 @@ GlobalObject::GlobalObject(JSC::VM& vm, JSC::Structure* structure, WebCore::Scri
     : Base(vm, structure, methodTable)
     , m_bunVM(Bun__getVM())
     , m_constructors(makeUnique<WebCore::DOMConstructors>())
-    , m_world(WebCore::DOMWrapperWorld::create(vm, WebCore::DOMWrapperWorld::Type::Normal))
+    , m_world(static_cast<JSVMClientData*>(vm.clientData)->normalWorld())
     , m_worldIsNormal(true)
     , m_builtinInternalFunctions(vm)
     , m_scriptExecutionContext(new WebCore::ScriptExecutionContext(&vm, this, contextId))
@@ -2873,6 +2875,16 @@ void GlobalObject::finishCreation(VM& vm)
                     jsDynamicCast<Zig::GlobalObject*>(init.owner)));
         });
 
+    m_JSStatsClassStructure.initLater(
+        [](LazyClassStructure::Initializer& init) {
+            Bun::initJSStatsClassStructure(init);
+        });
+
+    m_JSStatsBigIntClassStructure.initLater(
+        [](LazyClassStructure::Initializer& init) {
+            Bun::initJSBigIntStatsClassStructure(init);
+        });
+
     m_memoryFootprintStructure.initLater(
         [](const JSC::LazyProperty<JSC::JSGlobalObject, Structure>::Initializer& init) {
             init.set(
@@ -3826,6 +3838,8 @@ void GlobalObject::visitChildrenImpl(JSCell* cell, Visitor& visitor)
     thisObject->m_lazyRequireCacheObject.visit(visitor);
     thisObject->m_lazyTestModuleObject.visit(visitor);
     thisObject->m_memoryFootprintStructure.visit(visitor);
+    thisObject->m_JSStatsClassStructure.visit(visitor);
+    thisObject->m_JSStatsBigIntClassStructure.visit(visitor);
     thisObject->m_NapiClassStructure.visit(visitor);
     thisObject->m_NapiExternalStructure.visit(visitor);
     thisObject->m_NAPIFunctionStructure.visit(visitor);
@@ -4306,7 +4320,11 @@ JSC::JSValue EvalGlobalObject::moduleLoaderEvaluate(JSGlobalObject* lexicalGloba
 
 GlobalObject::PromiseFunctions GlobalObject::promiseHandlerID(Zig::FFIFunction handler)
 {
-    if (handler == Bun__HTTPRequestContext__onReject) {
+    if (handler == BunServe__onResolvePlugins) {
+        return GlobalObject::PromiseFunctions::BunServe__Plugins__onResolve;
+    } else if (handler == BunServe__onRejectPlugins) {
+        return GlobalObject::PromiseFunctions::BunServe__Plugins__onReject;
+    } else if (handler == Bun__HTTPRequestContext__onReject) {
         return GlobalObject::PromiseFunctions::Bun__HTTPRequestContext__onReject;
     } else if (handler == Bun__HTTPRequestContext__onRejectStream) {
         return GlobalObject::PromiseFunctions::Bun__HTTPRequestContext__onRejectStream;

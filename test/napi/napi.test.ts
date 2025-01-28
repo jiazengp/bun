@@ -115,7 +115,6 @@ describe("napi", () => {
           outdir: dir,
           target,
           format,
-          throw: true,
         });
 
         expect(build.logs).toBeEmpty();
@@ -384,6 +383,17 @@ describe("napi", () => {
       checkSameOutput("test_extended_error_messages", []);
     });
   });
+
+  it.each([
+    ["nullptr", { number: 123 }],
+    ["null", null],
+    ["undefined", undefined],
+  ])("works when the module register function returns %s", (returnKind, expected) => {
+    expect(require(`./napi-app/build/Release/${returnKind}_addon.node`)).toEqual(expected);
+  });
+  it("works when the module register function throws", () => {
+    expect(() => require("./napi-app/build/Release/throw_addon.node")).toThrow(new Error("oops!"));
+  });
 });
 
 function checkSameOutput(test: string, args: any[] | string) {
@@ -391,11 +401,14 @@ function checkSameOutput(test: string, args: any[] | string) {
   let bunResult = runOn(bunExe(), test, args);
   // remove all debug logs
   bunResult = bunResult.replaceAll(/^\[\w+\].+$/gm, "").trim();
-  expect(bunResult).toBe(nodeResult);
+  expect(bunResult).toEqual(nodeResult);
   return nodeResult;
 }
 
 function runOn(executable: string, test: string, args: any[] | string) {
+  // when the inspector runs (can be due to VSCode extension), there is
+  // a bug that in debug modes the console logs extra stuff
+  const { BUN_INSPECT_CONNECT_TO: _, ...rest } = bunEnv;
   const exec = spawnSync({
     cmd: [
       executable,
@@ -404,7 +417,7 @@ function runOn(executable: string, test: string, args: any[] | string) {
       test,
       typeof args == "string" ? args : JSON.stringify(args),
     ],
-    env: bunEnv,
+    env: rest,
   });
   const errs = exec.stderr.toString();
   if (errs !== "") {
